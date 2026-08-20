@@ -1,0 +1,16 @@
+seed: 42
+
+data:
+  image_size: 224
+  target_fps: 10
+
+training:
+  batch_size: 16
+  epochs: 10
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+
+model:
+  name: resnet18
+  pretrained: false
+  num_classes: 2
