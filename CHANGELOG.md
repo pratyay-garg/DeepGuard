@@ -42,19 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Same dual-mode support as training
   - Compatible with temporal checkpoints
 
-- **Documentation**
-  - `docs/TRAINING_GUIDE.md` — Comprehensive training guide with BiLSTM+Attention
-  - Updated README with implementation status
-  - Added examples for all training modes
 
-### Changed
-- `src/datasets/__init__.py` — Exports MultiFrameDataset
-- `src/models/__init__.py` — Exports create_model factory
-- `scripts/train.py` — Switched from hardcoded ResNet18 to model factory
-- `scripts/evaluate.py` — Switched to model factory for loading
 
-### Fixed
-- (No bugs fixed in this release)
 
 ### ResNet + BiLSTM + Temporal Attention (NEW)
 - **Architecture**: ResNet18 → BiLSTM → Temporal Attention → Classifier
