@@ -5,7 +5,7 @@ data:
   target_fps: 10
 
 training:
-  batch_size: 32
+  batch_size: 8
   epochs: 10
   learning_rate: 0.0001
   weight_decay: 0.0001
@@ -15,7 +15,11 @@ model:
   pretrained: true
   num_classes: 2
   temporal:
-    enabled: false
-    model: tsm
+    enabled: true
+    model: bilstm_attention
+    lstm_layers: 2
+    lstm_hidden: 256
+    attention_dim: 256
+    dropout: 0.3
     sequence_length: 32
     stride: 32

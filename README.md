@@ -86,18 +86,25 @@ DeepGuard provides:      VIDEO     83%
 
 ---
 
-## Implementation Roadmap
+## Implementation Status
 
-| Phase | Goal |
+| Phase | Status |
 |---|---|
-| 1 | Visual baseline — Face crop → ResNet18 → Real/Fake |
-| 2 | Temporal modelling — Frame embeddings → Temporal CNN / TSM |
-| 3 | Audio baseline — Audio → Mel spectrogram → CNN → Real/Fake |
-| 4 | Multimodal fusion — Video + Audio → Gated Fusion |
-| 5 | Advanced fusion — Video + Audio → Cross-Attention |
-| 6 | Localization — 3.2s windows → timestamped manipulation probability |
+| 1 | ✅ Complete — Single-frame ResNet18 baseline |
+| 2 | ✅ Complete — Temporal modeling (TSM & Temporal CNN) |
+| 3 | ⏳ Planned — Audio baseline |
+| 4 | ⏳ Planned — Multimodal fusion (Video + Audio) |
+| 5 | ⏳ Planned — Cross-attention fusion |
+| 6 | ⏳ Planned — Localization with 3.2s windows |
 
-This repo currently reflects the **idea/architecture submission stage** for OMNIKON 2025; phases above track planned implementation order.
+### Current Features
+
+- **Single-frame ResNet18** — Baseline for deepfake detection
+- **Temporal ResNet18-TSM** — Zero-FLOP temporal shift operations
+- **Temporal ResNet18+CNN** — Flexible temporal processing with Conv1D
+- **MultiFrameDataset** — Efficient sequence handling from manifests
+- **Flexible Configuration** — Choose between single-frame and temporal training
+- **Video-level Evaluation** — Frame and video metrics aggregation
 
 ---
 

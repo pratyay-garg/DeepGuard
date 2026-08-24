@@ -8,6 +8,7 @@ from pathlib import Path
 
 import cv2
 
+
 from src.preprocessing.face_cropper import FaceCropper
 from src.preprocessing.face_detector import OpenCVFaceDetector, FaceDetector
 from src.preprocessing.video_sampler import VideoSampler

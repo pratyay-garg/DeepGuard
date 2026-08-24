@@ -1,15 +1,34 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, List, Tuple
+
+from urllib.request import urlretrieve
+
 import numpy as np
 import cv2
 
-#  will make it clean in future, but for now, we will keep it simple and use the default model path
-from pathlib import Path
-
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]  # DeepGuard/
 _DEFAULT_MODEL = _PROJECT_ROOT / "model_downloaded" / "face_detection_yunet_2023mar.onnx"
+_YUNET_URL = (
+    "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
+    "face_detection_yunet_2023mar.onnx"
+)
+
+
+def _ensure_yunet_model(model_path: Path) -> Path:
+    """Make sure the YuNet ONNX file exists locally, downloading it if needed."""
+    if model_path.exists() and model_path.stat().st_size > 0:
+        return model_path
+
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    urlretrieve(_YUNET_URL, model_path)
+
+    if not model_path.exists() or model_path.stat().st_size == 0:
+        raise FileNotFoundError(f"YuNet download failed: {model_path}")
+
+    return model_path
 
 
 
@@ -92,20 +111,9 @@ class OpenCVFaceDetector(FaceDetector):
                  model_path: str | Path | None = None,
                  input_size: tuple[int, int] = (320, 320)):
 
-        # will fix this later, but for now, we will use the default model path if none is provided
         model_path = Path(model_path) if model_path else _DEFAULT_MODEL
+        model_path = _ensure_yunet_model(model_path)
 
-        if not model_path.exists() or model_path.stat().st_size == 0:
-            raise FileNotFoundError(
-                f"YuNet model not found or empty at: {model_path}\n"
-                "Download it with:\n"
-                "  curl -L -o models/face_detection_yunet_2023mar.onnx "
-                "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-            )
-
-        # ------
-
-        
         self.input_size = input_size
         self.conf_threshold = conf_threshold
         self.detector = cv2.FaceDetectorYN.create(
