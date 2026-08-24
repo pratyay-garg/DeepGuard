@@ -16,7 +16,7 @@ class FaceCropper:
     def crop(
         self,
         frame: np.ndarray,
-        bbox: Tuple[int, int, int, int],
+        bbox: Tuple[int,...],
         margin: float = 0.2
     ) -> np.ndarray:
         """

@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from src.datasets.ffpp import FFPPDataset
+from src.datasets import PreparedDataset
 from src.datasets.transforms import build_eval_transforms, build_train_transforms
 from src.models.resnet18 import ResNet18Detector
 from src.training.trainer import Trainer
@@ -32,8 +32,8 @@ def main():
     set_seed(int(config.get("seed", 42)))
     device = get_device()
 
-    train_dataset = FFPPDataset(args.train_manifest, transform=build_train_transforms(config["data"]["image_size"]))
-    val_dataset = FFPPDataset(args.val_manifest, transform=build_eval_transforms(config["data"]["image_size"]))
+    train_dataset = PreparedDataset(args.train_manifest, transform=build_train_transforms(config["data"]["image_size"]))
+    val_dataset = PreparedDataset(args.val_manifest, transform=build_eval_transforms(config["data"]["image_size"]))
 
     train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False)

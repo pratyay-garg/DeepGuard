@@ -5,6 +5,12 @@ from typing import Optional, List, Tuple
 import numpy as np
 import cv2
 
+#  will make it clean in future, but for now, we will keep it simple and use the default model path
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]  # DeepGuard/
+_DEFAULT_MODEL = _PROJECT_ROOT / "model_downloaded" / "face_detection_yunet_2023mar.onnx"
+
 
 
 @dataclass
@@ -82,15 +88,33 @@ class FaceDetector(ABC):
 class OpenCVFaceDetector(FaceDetector):
    
 
-    def __init__(self, conf_threshold: float = 0.6):
+    def __init__(self, conf_threshold: float = 0.6,
+                 model_path: str | Path | None = None,
+                 input_size: tuple[int, int] = (320, 320)):
 
+        # will fix this later, but for now, we will use the default model path if none is provided
+        model_path = Path(model_path) if model_path else _DEFAULT_MODEL
+
+        if not model_path.exists() or model_path.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"YuNet model not found or empty at: {model_path}\n"
+                "Download it with:\n"
+                "  curl -L -o models/face_detection_yunet_2023mar.onnx "
+                "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+            )
+
+        # ------
+
+        
+        self.input_size = input_size
         self.conf_threshold = conf_threshold
-        # Built-in YuNet or Haar Cascades
         self.detector = cv2.FaceDetectorYN.create(
-            model="",
-            config="",
-            input_size=(320, 320),
-            score_threshold=conf_threshold
+            str(model_path),
+            "",
+            input_size,
+            score_threshold=conf_threshold,
+            nms_threshold=0.3,
+            top_k=5000,
         )
 
     def detect(self, frame: np.ndarray) -> List[FaceDetection]:
