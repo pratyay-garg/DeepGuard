@@ -1,70 +1,16 @@
 # Changelog
 
-All notable changes to DeepGuard will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
-
 ### Added
-- **MultiFrameDataset** — New dataset class for temporal sequence training
-  - Groups frames by video_id
-  - Creates non-overlapping sequences of configurable length
-  - Supports stride parameter for sequence extraction
-  - Preserves metadata for evaluation
+- **Temporal Localization (Phase 12)**: 
+  - Created `scripts/localize.py` that utilizes sliding windows (e.g., 32 frames with 16 frame stride) to localize the precise timing of deepfakes inside videos.
+  - Acts as a pure data-router feeding sliced array batches into the existing `evaluate_model` pipeline.
+  - Implemented max-score aggregation and suspicious interval detection (outputs timestamps).
+  - Updated `MultiFrameDataset` and `MultimodalSequenceDataset` to properly slice unique frames with correct boundary safety checks for sliding windows.
+  - Integrated into `commands.sh` via the new `localize` function.
 
-- **Model Factory** — Flexible model creation system
-  - `create_model()` function for runtime model selection
-  - Supports three modes: single-frame, TSM, Temporal CNN, BiLSTM+Attention
-  - Config-driven architecture selection
-
-- **Temporal Models**
-  - ResNet18 with TSM (Temporal Shift Module) for zero-FLOP temporal modeling
-  - ResNet18 + Temporal CNN for flexible temporal processing
-  - **ResNet18 + BiLSTM + Temporal Attention** (NEW) — State-of-the-art architecture
-  - Preserves existing temporal models (TemporalMeanPooling, TemporalCNN)
-
-- **Enhanced Configurations**
-  - `configs/resnet18_single_frame.yaml` — Baseline single-frame training
-  - `configs/resnet18_tsm.yaml` — TSM temporal model training
-  - `configs/resnet18_temporal_cnn.yaml` — Temporal CNN training
-  - `configs/resnet18_bilstm_attention.yaml` (NEW) — BiLSTM+Attention training
-  - Updated `configs/baseline.yaml` and `configs/quick.yaml` with temporal options
-
-- **Updated Training Script** — Supports both modes via config or CLI flag
-  - Detects temporal mode from config or `--use-multi-frame` flag
-  - Automatically selects appropriate dataset class
-  - Adjusts batch size for memory efficiency
-  - Saves temporal-specific checkpoints
-
-- **Updated Evaluation Script** — Supports temporal evaluation
-  - Same dual-mode support as training
-  - Compatible with temporal checkpoints
-
-
-
-
-### ResNet + BiLSTM + Temporal Attention (NEW)
-- **Architecture**: ResNet18 → BiLSTM → Temporal Attention → Classifier
-- **Features**:
-  - ResNet18 extracts frame embeddings [B, T, 512]
-  - BiLSTM captures bidirectional temporal dependencies
-  - Temporal attention weights important frames
-  - Multiple utility methods: `get_attention_weights()`, `get_frame_embeddings()`, `get_lstm_hidden_states()`
-  - Configurable: layers, hidden size, attention dimension, dropout
-- **Use Cases**: Advanced temporal modeling, best performance, interpretability via attention
-
-## [1.0.0] - Initial Release
-
-### Added
-- Single-frame ResNet18 detector
-- Temporal models (TSM, Temporal CNN)
-- PreparedDataset for frame-based training
-- VideoSampler for frame extraction
-- Face detection and cropping pipeline
-- Training loop with validation
-- Comprehensive metrics (accuracy, precision, recall, F1, ROC-AUC)
-- Video-level metrics aggregation
-- Checkpoint saving/loading
-- Configuration system with YAML support
+### Phase 11: Audio-Video Synchronization
+* Created `AVSyncDataset` inheriting directly from `MultimodalSequenceDataset` to dynamically generate synced (positive) and unsynced (negative) audio-video pairs at runtime without duplicating file loading logic.
+* Added `AVSyncModel` implementing a dual-encoder architecture (temporal video backbone and audio backbone) that contrasts features using Cosine Similarity for AV synchronization prediction.
+* Added robust model factory routing to cleanly spin up AV Sync using existing backbones (TSM and AudioResNet18).
+* Integrated into `train.py` and `evaluate.py` via `is_temporal_multimodal` handling, allowing direct model training and sliding window analysis.

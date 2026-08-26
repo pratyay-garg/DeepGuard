@@ -1,0 +1,39 @@
+# Audio ResNet18 configuration for DeepGuard
+# Based on the structure of existing video configs
+
+# Data configuration
+data:
+  # For audio, we don't use image size, but we keep the structure for compatibility
+  image_size: 224  # Not used for audio, but kept for config structure
+  # Audio-specific parameters
+  audio:
+    sample_rate: 16000
+    n_fft: 400
+    hop_length: 160
+    n_mels: 80
+    f_min: 0.0
+    f_max: null  # Will be set to sample_rate/2
+    max_frames: 200  # Fixed length for spectrograms (time dimension)
+
+# Model configuration
+model:
+  name: audio_resnet18  # This will be used to select the AudioResNet18 model
+  pretrained: true
+  embedding_dim: 512
+  num_classes: 2  # Real / Fake
+  freeze_backbone: false
+  dropout_rate: 0.5
+
+# Training configuration
+training:
+  batch_size: 16
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  epochs: 10
+  # For audio, we don't use sequence length, but we keep the structure for compatibility
+  # Temporal settings are not used for audio
+  temporal:
+    enabled: false
+
+# Other settings
+seed: 42

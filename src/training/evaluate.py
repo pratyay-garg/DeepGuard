@@ -18,10 +18,25 @@ def evaluate_model(model, dataloader, device):
     all_predictions = []
     sample_rows = []
 
-    for images, labels, metadata in dataloader:
-        images = images.to(device)
-        labels = labels.to(device)
-        logits = model(images)
+    for batch in dataloader:
+        if len(batch) == 4:
+            images, audio, labels, metadata = batch
+            images = images.to(device)
+            audio = audio.to(device)
+            labels = labels.to(device)
+            
+            if hasattr(model, 'is_fusion_model') and model.is_fusion_model:
+                video_embedding = model.video_model(images)
+                audio_embedding = model.audio_model(audio)
+                logits = model.fusion_head(video_embedding, audio_embedding)
+            else:
+                logits = model(images, audio)
+        else:
+            images, labels, metadata = batch
+            images = images.to(device)
+            labels = labels.to(device)
+            logits = model(images)
+            
         probabilities = torch.softmax(logits, dim=1)[:, 1]
 
         preds = (probabilities >= 0.5).to(torch.int64)
@@ -59,8 +74,8 @@ def evaluate_model(model, dataloader, device):
                 {
                     "video_id": vid,
                     "sample_id": sample_id,
-                    "frame_index": fi,
-                    "timestamp": ts,
+                    "frame_index": fi.item() if hasattr(fi, 'item') else fi,
+                    "timestamp": ts.item() if hasattr(ts, 'item') else ts,
                     "true_label": int(labels[idx].item()),
                     "predicted_label": int(preds[idx].item()),
                     "fake_probability": float(probabilities[idx].item()),

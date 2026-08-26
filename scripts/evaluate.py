@@ -8,7 +8,8 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from src.datasets import PreparedDataset, MultiFrameDataset
+from src.datasets import PreparedDataset, MultiFrameDataset, AudioDataset
+from src.datasets.multimodal_dataset import MultimodalDataset
 from src.datasets.transforms import build_eval_transforms
 from src.models import create_model
 from src.training.evaluate import evaluate_model
@@ -18,10 +19,10 @@ from src.utils.seed import set_seed
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate DeepGuard model (single-frame or temporal)")
-    parser.add_argument("--config", type=str, default="configs/baseline.yaml")
-    parser.add_argument("--manifest", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, required=True)
+    parser = argparse.ArgumentParser(description="Evaluate DeepGuard model (single-frame, temporal, audio, or fusion)")
+    parser.add_argument("--config", type=str, required=True, help="Path to config file")
+    parser.add_argument("--manifest", type=str, required=True, help="Path to evaluation manifest")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint")
     parser.add_argument(
         "--use-multi-frame",
         action="store_true",
@@ -37,86 +38,114 @@ def main():
     set_seed(int(config.get("seed", 42)))
 
     device = get_device()
-
-    # Check for temporal mode
+    model_name = config["model"].get("name", "resnet18")
+    
+    is_audio = model_name == "audio_resnet18"
+    is_fusion = model_name in ("concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync")
     use_temporal = args.use_multi_frame or config["model"].get("temporal", {}).get("enabled", False)
 
-    # Determine which dataset to use
-    if use_temporal:
-        print("Evaluating with temporal model (multi-frame sequences)")
-        dataset_cls = MultiFrameDataset
-        image_size = config["data"].get("image_size", 224)
+    image_size = config["data"].get("image_size", 224)
+    audio_config = config.get("data", {}).get("audio", {})
+
+    print(f"Evaluating with model: {model_name}")
+
+    if is_fusion:
+        if model_name == "av_sync":
+            from src.datasets.av_sync_dataset import AVSyncDataset
+            sequence_length = config["data"].get("sequence_length", 32)
+            stride = config["data"].get("stride", 32)
+            dataset = AVSyncDataset(
+                args.manifest,
+                transform=build_eval_transforms(image_size),
+                audio_config=audio_config,
+                sequence_length=sequence_length,
+                stride=stride,
+            )
+        else:
+            dataset = MultimodalDataset(
+                args.manifest,
+                transform=build_eval_transforms(image_size),
+                audio_transform=None,
+                audio_config=audio_config,
+            )
+    elif is_audio:
+        dataset = AudioDataset(
+            dataset_path=args.manifest,
+            sample_rate=audio_config.get("sample_rate", 16000),
+            n_fft=audio_config.get("n_fft", 400),
+            hop_length=audio_config.get("hop_length", 160),
+            n_mels=audio_config.get("n_mels", 80),
+            f_min=audio_config.get("f_min", 0.0),
+            f_max=audio_config.get("f_max", None),
+            power=audio_config.get("power", 2.0),
+            transform=None,
+        )
+    elif use_temporal:
         sequence_length = config["model"]["temporal"].get("sequence_length", 32)
         stride = config["model"]["temporal"].get("stride", 32)
-
-        dataset = dataset_cls(
+        dataset = MultiFrameDataset(
             args.manifest,
             transform=build_eval_transforms(image_size),
             sequence_length=sequence_length,
             stride=stride,
         )
-
         print(f"Sequence length: {sequence_length}, Stride: {stride}")
-        print(f"Evaluation samples: {len(dataset)}")
     else:
-        print("Evaluating with single-frame ResNet18")
-        dataset_cls = PreparedDataset
-        image_size = config["data"].get("image_size", 224)
-
-        dataset = dataset_cls(
+        dataset = PreparedDataset(
             args.manifest, transform=build_eval_transforms(image_size)
         )
 
-        print(f"Evaluation samples: {len(dataset)}")
+    print(f"Evaluation samples: {len(dataset)}")
 
-    loader = DataLoader(dataset, batch_size=config["training"]["batch_size"], shuffle=False)
+    loader = DataLoader(
+        dataset, 
+        batch_size=config["training"].get("batch_size", 8), 
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+    )
 
     # Create model using factory
+    config["model"]["sequence_length"] = config.get("data", {}).get("sequence_length", 16)
     model = create_model(
         config["model"],
         num_classes=config["model"].get("num_classes", 2),
     ).to(device)
 
     checkpoint_data = torch.load(args.checkpoint, map_location=device)
-    model.load_state_dict(checkpoint_data["model_state_dict"])
+    if "model_state_dict" in checkpoint_data:
+        model.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
+    else:
+        model.load_state_dict(checkpoint_data, strict=False)
 
     results = evaluate_model(model, loader, device)
     frame_metrics = results.get("frame_metrics", {})
     video_metrics = results.get("video_metrics", {})
     samples = results.get("samples", None)
 
-    # Create subdirectory named after checkpoint (without extension)
-    checkpoint_stem = Path(args.checkpoint).stem
-    out_dir = Path(args.checkpoint).resolve().parent / checkpoint_stem
+    checkpoint_path = Path(args.checkpoint).resolve()
+    checkpoint_stem = checkpoint_path.stem
+    # Save outputs alongside the checkpoint file inside its directory
+    out_dir = checkpoint_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    frame_metrics_path = out_dir / (checkpoint_stem + "_frame_metrics.json")
+    frame_metrics_path = out_dir / f"{checkpoint_stem}_frame_metrics.json"
     with frame_metrics_path.open("w", encoding="utf-8") as f:
         json.dump(frame_metrics, f, indent=2)
 
-    video_metrics_path = out_dir / (checkpoint_stem + "_video_metrics.json")
+    video_metrics_path = out_dir / f"{checkpoint_stem}_video_metrics.json"
     with video_metrics_path.open("w", encoding="utf-8") as f:
         json.dump(video_metrics, f, indent=2)
 
     if samples is not None:
-        samples_path = out_dir / (checkpoint_stem + "_predictions.csv")
+        samples_path = out_dir / f"{checkpoint_stem}_predictions.csv"
         with samples_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=[
-                    "video_id",
-                    "sample_id",
-                    "frame_index",
-                    "timestamp",
-                    "true_label",
-                    "predicted_label",
-                    "fake_probability",
-                ],
+                fieldnames=["video_id", "sample_id", "frame_index", "timestamp", "true_label", "predicted_label", "fake_probability"],
             )
             writer.writeheader()
-
             for row in samples:
-                # Normalize tensors to python scalars if present
                 out_row = {
                     "video_id": row.get("video_id"),
                     "sample_id": row.get("sample_id"),
@@ -133,7 +162,6 @@ def main():
 
     print("\nVideo-level metrics:")
     print({k: video_metrics[k] for k in ("accuracy", "precision", "recall", "f1", "roc_auc") if k in video_metrics})
-
 
 if __name__ == "__main__":
     main()

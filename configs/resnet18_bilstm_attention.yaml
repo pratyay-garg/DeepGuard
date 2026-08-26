@@ -5,8 +5,8 @@ data:
   target_fps: 10
 
 training:
-  batch_size: 8
-  epochs: 10
+  batch_size: 2
+  epochs: 6
   learning_rate: 0.0001
   weight_decay: 0.0001
 
@@ -17,9 +17,9 @@ model:
   temporal:
     enabled: true
     model: bilstm_attention
-    lstm_layers: 2
-    lstm_hidden: 256
-    attention_dim: 256
+    lstm_layers: 1
+    lstm_hidden: 128
+    attention_dim: 128
     dropout: 0.3
-    sequence_length: 32
-    stride: 32
+    sequence_length: 16
+    stride: 16

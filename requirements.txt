@@ -4,9 +4,14 @@ pillow
 torchvision
 scikit-learn
 matplotlib
+pandas
+seaborn
 pyyaml
 tqdm
 insightface
 onnxruntime
 pandas
 torch
+datasets
+torchaudio
+torchcodec

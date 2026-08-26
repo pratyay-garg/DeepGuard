@@ -6,7 +6,7 @@ from typing import Any, Dict
 import torch
 
 
-def save_checkpoint(path, model, optimizer, epoch, best_metric, config):
+def save_checkpoint(path, model, optimizer, epoch, best_metric, config, metrics=None):
     """Persist a training checkpoint with model/optimizer state and metadata."""
     checkpoint_path = Path(path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,6 +17,7 @@ def save_checkpoint(path, model, optimizer, epoch, best_metric, config):
         "epoch": epoch,
         "best_metric": best_metric,
         "config": config,
+        "metrics": metrics or {},
     }
 
     torch.save(checkpoint, checkpoint_path)

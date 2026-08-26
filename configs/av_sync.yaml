@@ -1,0 +1,23 @@
+model:
+  name: "av_sync"
+  video_embedding_dim: 512
+  audio_embedding_dim: 512
+  projection_dim: 256
+  # Use the resnet18_tsm checkpoint for video and audio_resnet18 for audio
+  video_checkpoint: "checkpoints/tsm/tsm.pt"
+  audio_checkpoint: "checkpoints/audio_resnet18/audio_resnet18.pt"
+
+training:
+  batch_size: 2
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  num_epochs: 1
+
+data:
+  image_size: 224
+  sequence_length: 16
+  stride: 8
+  audio:
+    sample_rate: 16000
+    duration: 4.0
+    n_mels: 80

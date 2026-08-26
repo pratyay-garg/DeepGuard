@@ -23,6 +23,7 @@ class Trainer:
         self.epoch = 0
         self.best_val_metric = -float("inf")
         self.best_model_state = None
+        self.accumulation_steps = config.get("training", {}).get("accumulation_steps", 1)
 
     def train_epoch(self):
         self.model.train()
@@ -32,24 +33,67 @@ class Trainer:
         all_probabilities = []
         all_predictions = []
 
-        for images, labels, _ in tqdm(self.train_loader, desc="Training", leave=False):
-            images = images.to(self.device)
-            labels = labels.to(self.device)
-
-            self.optimizer.zero_grad()
-            logits = self.model(images)
-            loss = self.criterion(logits, labels)
-            loss.backward()
-            self.optimizer.step()
-
-            running_loss += loss.item() * images.size(0)
-
-            probabilities = torch.softmax(logits, dim=1)[:, 1]
-            preds = (probabilities >= 0.5).to(torch.int64)
-
-            all_targets.append(labels.detach().cpu().numpy())
-            all_probabilities.append(probabilities.detach().cpu().numpy())
-            all_predictions.append(preds.detach().cpu().numpy())
+        for i, batch in enumerate(tqdm(self.train_loader, desc="Training", leave=False)):
+            # Handle different dataset types
+            if len(batch) == 4:  # Multimodal: image, audio, label, metadata
+                images, audio, labels, _ = batch
+                images = images.to(self.device)
+                audio = audio.to(self.device)
+                labels = labels.to(self.device)
+                
+                self.optimizer.zero_grad()
+                # For multimodal models, extract embeddings then pass to fusion head
+                if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
+                    with torch.no_grad():
+                        # Extract video embedding
+                        video_embedding = self.model.video_backbone(images)
+                        # Extract audio embedding
+                        audio_embedding = self.model.audio_backbone(audio)
+                    logits = self.model.fusion_head(video_embedding, audio_embedding)
+                else:
+                    logits = self.model(images, audio)
+                loss = self.criterion(logits, labels)
+                loss.backward()
+                
+                # Gradient accumulation
+                if (i + 1) % self.accumulation_steps == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                
+                running_loss += loss.item() * images.size(0)
+                
+                probabilities = torch.softmax(logits, dim=1)[:, 1]
+                preds = (probabilities >= 0.5).to(torch.int64)
+                
+                all_targets.append(labels.detach().cpu().numpy())
+                all_probabilities.append(probabilities.detach().cpu().numpy())
+                all_predictions.append(preds.detach().cpu().numpy())
+                
+            elif len(batch) == 3:  # Standard: image, label, metadata
+                images, labels, _ = batch
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+                
+                self.optimizer.zero_grad()
+                logits = self.model(images)
+                loss = self.criterion(logits, labels)
+                loss.backward()
+                
+                # Gradient accumulation
+                if (i + 1) % self.accumulation_steps == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                
+                running_loss += loss.item() * images.size(0)
+                
+                probabilities = torch.softmax(logits, dim=1)[:, 1]
+                preds = (probabilities >= 0.5).to(torch.int64)
+                
+                all_targets.append(labels.detach().cpu().numpy())
+                all_probabilities.append(probabilities.detach().cpu().numpy())
+                all_predictions.append(preds.detach().cpu().numpy())
+            else:
+                raise ValueError(f"Unexpected batch size: {len(batch)}")
 
         targets = self._concatenate(all_targets)
         probabilities = self._concatenate(all_probabilities)
@@ -68,11 +112,25 @@ class Trainer:
         all_predictions = []
 
         with torch.no_grad():
-            for images, labels, _ in tqdm(self.val_loader, desc="Validation", leave=False):
-                images = images.to(self.device)
-                labels = labels.to(self.device)
+            for batch in tqdm(self.val_loader, desc="Validation", leave=False):
+                if len(batch) == 4:
+                    images, audio, labels, _ = batch
+                    images = images.to(self.device)
+                    audio = audio.to(self.device)
+                    labels = labels.to(self.device)
+                    
+                    if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
+                        video_embedding = self.model.video_model(images)
+                        audio_embedding = self.model.audio_model(audio)
+                        logits = self.model.fusion_head(video_embedding, audio_embedding)
+                    else:
+                        logits = self.model(images, audio)
+                else:
+                    images, labels, _ = batch
+                    images = images.to(self.device)
+                    labels = labels.to(self.device)
+                    logits = self.model(images)
 
-                logits = self.model(images)
                 loss = self.criterion(logits, labels)
                 running_loss += loss.item() * images.size(0)
 
@@ -93,6 +151,7 @@ class Trainer:
 
     def fit(self, max_epochs=None):
         epochs = int(self.config.get("training", {}).get("epochs", 10)) if max_epochs is None else int(max_epochs)
+        best_val_metrics = {}
 
         for epoch in range(1, epochs + 1):
             self.epoch = epoch
@@ -105,6 +164,7 @@ class Trainer:
             if metric_to_track > self.best_val_metric:
                 self.best_val_metric = metric_to_track
                 self.best_model_state = copy.deepcopy(self.model.state_dict())
+                best_val_metrics = val_metrics
 
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)
@@ -112,9 +172,10 @@ class Trainer:
         return {
             "best_val_metric": self.best_val_metric,
             "epoch": self.epoch,
+            "best_val_metrics": best_val_metrics,
         }
 
-    def save_checkpoint(self, path, epoch=None, best_metric=None):
+    def save_checkpoint(self, path, epoch=None, best_metric=None, metrics=None):
         if epoch is None:
             epoch = self.epoch
         if best_metric is None:
@@ -127,6 +188,7 @@ class Trainer:
             epoch=epoch,
             best_metric=best_metric,
             config=self.config,
+            metrics=metrics,
         )
 
     @staticmethod

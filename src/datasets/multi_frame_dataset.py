@@ -100,19 +100,19 @@ class MultiFrameDataset(torch.utils.data.Dataset):
             # Extract unique frames
             unique_frames = group[self.image_path_column].unique()
 
-            # Create sequences
-            num_sequences = len(unique_frames) // self.stride
-            if num_sequences == 0:
+            # Create sequences using sliding window
+            seq_len = self.sequence_length
+            stride = self.stride
+            
+            # Calculate how many sequences we can extract
+            if len(unique_frames) < seq_len:
                 continue
-
-            # Limit to first num_sequences
-            unique_frames = unique_frames[: num_sequences * self.stride]
+                
+            num_sequences = (len(unique_frames) - seq_len) // stride + 1
 
             for i in range(num_sequences):
-                frame_indices = list(range(i * self.stride, i * self.stride + self.sequence_length))
-
-                if len(frame_indices) < self.sequence_length:
-                    continue
+                start_idx = i * stride
+                frame_indices = list(range(start_idx, start_idx + seq_len))
 
                 frame_paths = [unique_frames[idx] for idx in frame_indices]
 

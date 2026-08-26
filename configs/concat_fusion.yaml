@@ -1,0 +1,44 @@
+# Concat Fusion Model Configuration
+# Multimodal fusion: Video + Audio -> Concat -> Classifier
+
+model:
+  name: "concat_fusion"
+  num_classes: 2
+  pretrained: true
+  video_backbone:
+    name: "resnet18"
+    pretrained: true
+  audio_backbone:
+    name: "audio_resnet18"
+    pretrained: false
+  fusion:
+    projection_dim: 256
+    hidden_dim: 512
+    dropout: 0.5
+    video_checkpoint: "checkpoints/single_frame/single_frame.pt"
+    audio_checkpoint: "checkpoints/audio_resnet18/audio_resnet18.pt"
+
+data:
+  image_size: 224
+  audio:
+    sample_rate: 16000
+    n_fft: 400
+    hop_length: 160
+    n_mels: 80
+    f_min: 0.0
+    f_max: null
+    power: 2.0
+    duration: 4.0
+
+training:
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  epochs: 1
+  accumulation_steps: 4
+  early_stopping_patience: 5
+  scheduler:
+    type: "cosine"
+    warmup_epochs: 2
+
+seed: 42
