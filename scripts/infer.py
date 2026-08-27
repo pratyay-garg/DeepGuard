@@ -87,20 +87,6 @@ def load_audio_model(ckpt_path, device):
     model.eval()
     return model
 
-def load_sync_model(ckpt_path, device):
-    config = {
-        "name": "av_sync",
-        "video_embedding_dim": 512,
-        "audio_embedding_dim": 512,
-        "projection_dim": 256,
-        "sequence_length": 16
-    }
-    model = create_model(config).to(device)
-    if Path(ckpt_path).exists():
-        state = torch.load(ckpt_path, map_location=device)
-        model.load_state_dict(state.get("model_state_dict", state), strict=False)
-    model.eval()
-    return model
 
 
 def main():
@@ -108,8 +94,8 @@ def main():
     parser.add_argument("video_path", type=str, help="Path to input .mp4 file")
     parser.add_argument("--video-ckpt", type=str, default="checkpoints/tsm/tsm.pt", help="Path to video model")
     parser.add_argument("--audio-ckpt", type=str, default="checkpoints/audio_resnet18/audio_resnet18.pt", help="Path to audio model")
-    parser.add_argument("--sync-ckpt", type=str, default="checkpoints/av_sync_1/av_sync_1.pt", help="Path to sync/fusion model")
-    parser.add_argument("--sync-model-name", type=str, default="av_sync", help="Name of sync/fusion model architecture")
+    parser.add_argument("--fusion-ckpt", type=str, default="checkpoints/av_sync_1/av_sync_1.pt", help="Path to fusion model")
+    parser.add_argument("--fusion-model-name", type=str, default="av_sync", help="Name of fusion model architecture (e.g. av_sync, fast_fusion, concat_fusion)")
     args = parser.parse_args()
 
     video_path = Path(args.video_path)
@@ -124,21 +110,32 @@ def main():
     audio_model = load_audio_model(args.audio_ckpt, device)
     
     config = {
-        "name": args.sync_model_name,
+        "name": args.fusion_model_name,
         "video_embedding_dim": 512,
         "audio_embedding_dim": 512,
         "projection_dim": 256,
-        "sequence_length": 16
+        "sequence_length": 16,
+        "embed_dim": 512,
+        "num_heads": 8,
+        "fusion": {
+            "video_embedding_dim": 512,
+            "audio_embedding_dim": 512,
+            "hidden_dim": 512,
+            "num_heads": 8,
+            "dropout": 0.5,
+            "video_checkpoint": args.video_ckpt,
+            "audio_checkpoint": args.audio_ckpt
+        }
     }
-    sync_model = create_model(config).to(device)
-    if Path(args.sync_ckpt).exists():
-        state = torch.load(args.sync_ckpt, map_location=device)
+    fusion_model = create_model(config).to(device)
+    if Path(args.fusion_ckpt).exists():
+        state = torch.load(args.fusion_ckpt, map_location=device)
         state = state.get("model_state_dict", state)
         # Map keys if fast_fusion was trained separately
-        if args.sync_model_name == "fast_fusion" and not any(k.startswith("fusion_head.") for k in state.keys()):
+        if args.fusion_model_name == "fast_fusion" and not any(k.startswith("fusion_head.") for k in state.keys()):
             state = {f"fusion_head.{k}": v for k, v in state.items()}
-        sync_model.load_state_dict(state, strict=False)
-    sync_model.eval()
+        fusion_model.load_state_dict(state, strict=False)
+    fusion_model.eval()
 
     # Face detection
     face_detector = OpenCVFaceDetector(conf_threshold=0.6)
@@ -269,17 +266,22 @@ def main():
                 
             s_audio = s_audio.unsqueeze(0).to(device)
             
-            sync_logits = sync_model(v_input, s_audio)
-            # Class 0: unsync (fake), Class 1: sync (real)
-            # So fake probability is class 0!
-            sync_prob = F.softmax(sync_logits, dim=1)[0, 0].item() 
-            sync_scores.append(sync_prob)
+            fusion_logits = fusion_model(v_input, s_audio)
+            
+            if args.fusion_model_name == "av_sync":
+                # Class 0: unsync (fake), Class 1: sync (real)
+                fusion_prob = F.softmax(fusion_logits, dim=1)[0, 0].item() 
+            else:
+                # Class 0: real, Class 1: fake (for concat, fast_fusion, cross_attention)
+                fusion_prob = F.softmax(fusion_logits, dim=1)[0, 1].item()
+                
+            sync_scores.append(fusion_prob)
             
             # Match to interval
             for it in intervals:
                 if it["start"] <= start_time and it["end"] >= end_time:
-                    if "s_prob" not in it or sync_prob > it["s_prob"]:
-                        it["s_prob"] = sync_prob
+                    if "s_prob" not in it or fusion_prob > it["s_prob"]:
+                        it["s_prob"] = fusion_prob
 
     final_v = max(video_scores) if video_scores else 0.0
     final_a = a_prob
@@ -288,7 +290,7 @@ def main():
     print("\n" + "="*50)
     print(f"DeepGuard provides:      VIDEO     {int(final_v * 100)}%")
     print(f"                         AUDIO     {int(final_a * 100)}%")
-    print(f"                         AV SYNC   {int(final_s * 100)}%")
+    print(f"                         MULTIMODAL{int(final_s * 100):3d}%")
     
     # Find most suspicious interval combining scores
     max_score = 0
