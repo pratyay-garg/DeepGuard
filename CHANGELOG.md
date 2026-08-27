@@ -1,6 +1,11 @@
 # Changelog
 
 ## [Unreleased]
+### Added / Changed (Final Touchups & Reporting)
+- **Enhanced Report Generation**: Expanded `scripts/generate_report.py` to extract and visualize additional critical benchmarks (`Accuracy`, `Precision`, and `Recall`) alongside `AUC` and `F1` in both markdown tables and matplotlib charts.
+- **Fast Fusion Integration**: Fixed temporal configuration and state dict mappings in `evaluate.py` to successfully evaluate the `fast_fusion` model and seamlessly include it in the final multimodal reports.
+- **Audio Evaluation Fixes**: Patched `src/datasets/audio_dataset.py` to gracefully handle corrupted audio samples (preventing data loader crashes) and properly generate `sample_id` metadata to accurately calculate aggregated video-level metrics.
+
 ### Added
 - **Temporal Localization (Phase 12)**: 
   - Created `scripts/localize.py` that utilizes sliding windows (e.g., 32 frames with 16 frame stride) to localize the precise timing of deepfakes inside videos.

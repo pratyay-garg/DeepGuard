@@ -44,11 +44,11 @@ DeepGuard provides:      VIDEO     83%
                      |                  |
           Temporal Model (TSM)          |
                      |                  |
-              Video Score          Audio Score
+            Video Embedding       Audio Embedding
                      \                 /
                        \             /
                     MULTIMODAL FUSION
-                 (Concat / Gated / AV Sync)
+         (Concat / Gated / FastFusion / AV Sync)
                             |
                    (Cross-Attention)
                             |
@@ -99,7 +99,8 @@ DeepGuard provides:      VIDEO     83%
 - **End-to-End Orchestration (`infer.py`)** — Unified inference on raw `.mp4` files.
 - **Multimodal Evaluation** — Analyzes Video, Audio, and AV Sync simultaneously.
 - **Temporal Localization** — Outputs exact suspicious time intervals in the media.
-- **Advanced Fusion Architectures** — Concat, Gated, Cross-Attention, and AV Sync.
+- **Advanced Fusion Architectures** — Concat, Gated, Cross-Attention, FastFusion, and AV Sync.
+- **Automated Reporting (`generate_report.py`)** — Automatically parses experiment metrics to generate presentation-ready multimodal comparison reports (Markdown tables & Matplotlib charts).
 
 ---
 
@@ -107,7 +108,7 @@ DeepGuard provides:      VIDEO     83%
 
 - [Celeb-DF-v2](https://github.com/yuezunli/celeb-deepfakeforensics) — Visual manipulation baseline (used processed subset)
 - [DeepfakeTIMIT](https://www.idiap.ch/dataset/deepfaketimit) — Audio-visual detection & multimodal analysis
-
+- [ASVspoof 2021 DF](https://www.asvspoof.org/index2021.html) — Audio deepfake and spoofed speech detection baseline
 
 ## Feasibility & Known Challenges
 
@@ -137,13 +138,11 @@ Deployable as a **web/API service**, a **content moderation pipeline**, a **digi
 
 ## References
 
-- Rössler et al., *FaceForensics++: Learning to Detect Manipulated Facial Images* — [github.com/ondyari/FaceForensics](https://github.com/ondyari/FaceForensics)
 - He et al., *Deep Residual Learning for Image Recognition (ResNet)* — [CVPR 2016](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html)
 - Lin et al., *TSM: Temporal Shift Module for Efficient Video Understanding* — [ICCV 2019](https://openaccess.thecvf.com/content_ICCV_2019/html/Lin_TSM_Temporal_Shift_Module_for_Efficient_Video_Understanding_ICCV_2019_paper.html)
-- SCRFD — *Sample and Computation Redistribution for Efficient Face Detection* — [github.com/deepinsight/insightface](https://github.com/deepinsight/insightface/tree/master/detection/scrfd)
-- DFDC — Facebook/Meta Deepfake Detection Challenge Dataset — [ai.meta.com/datasets/dfdc](https://ai.meta.com/datasets/dfdc/)
-- ASVspoof 2021 — [asvspoof.org](https://www.asvspoof.org/index2021.html)
-- AV-Deepfake1M — [openreview.net](https://openreview.net/forum?id=YZ68Ifi4yH)
+- Li et al., *Celeb-DF: A Large-scale Challenging Dataset for DeepFake Forensics* — [CVPR 2020](https://arxiv.org/abs/1909.12962)
+- Korshunov & Marcel, *DeepFakes: a New Threat to Face Recognition? Assessment and Detection (DeepfakeTIMIT)* — [arXiv 2018](https://arxiv.org/abs/1812.08685)
+- Yamagishi et al., *ASVspoof 2021: Towards Spoofed and Deepfake Speech Detection in the Wild* — [IEEE/ACM TASLP 2022](https://www.asvspoof.org/index2021.html)
 
 ---
 
