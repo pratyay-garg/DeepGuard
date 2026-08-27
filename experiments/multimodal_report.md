@@ -1,4 +1,4 @@
-# DeepGuard Evaluation Report (Final)
+# DeepGuard Evaluation Report
 
 ![Evaluation Metrics](multimodal_report.png)
 
