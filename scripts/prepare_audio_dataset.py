@@ -21,14 +21,14 @@ def main():
         "SpeechAntiSpoofingBenchmarks/ASVspoof2021_DF",
         split="test",  
         streaming=True
-    ).take(5000)  # Take only the first 5000 samples
+    ).take(30000)  # Take only the first 30000 samples
 
     # 2. Materialize the generator stream into a regular in-memory Dataset object
-    # This downloads only your targeted 5,000 files instead of the huge shards
-    print("Downloading and materializing 5,000 samples...")
+    # This downloads only your targeted 30,000 files instead of the huge shards
+    print("Downloading and materializing 30,000 samples...")
     small_dataset = Dataset.from_generator(lambda: iter(stream_dataset))
 
-    output_path = Path("./data/asvspoof_small")
+    output_path = Path("./data/asvspoof_30k")
     print(f"Saving dataset to {output_path}...")
     
     # 3. This will now work seamlessly without Pylance errors

@@ -41,7 +41,7 @@ def main():
     model_name = config["model"].get("name", "resnet18")
     
     is_audio = model_name == "audio_resnet18"
-    is_fusion = model_name in ("concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync")
+    is_fusion = "fusion" in model_name or "sync" in model_name
     use_temporal = args.use_multi_frame or config["model"].get("temporal", {}).get("enabled", False)
 
     image_size = config["data"].get("image_size", 224)
@@ -62,12 +62,25 @@ def main():
                 stride=stride,
             )
         else:
-            dataset = MultimodalDataset(
-                args.manifest,
-                transform=build_eval_transforms(image_size),
-                audio_transform=None,
-                audio_config=audio_config,
-            )
+            if use_temporal:
+                from src.datasets.multimodal_dataset import MultimodalSequenceDataset
+                sequence_length = config.get("model", {}).get("temporal", {}).get("sequence_length", 16)
+                stride = config.get("model", {}).get("temporal", {}).get("stride", 16)
+                dataset = MultimodalSequenceDataset(
+                    args.manifest,
+                    transform=build_eval_transforms(image_size),
+                    audio_transform=None,
+                    audio_config=audio_config,
+                    sequence_length=sequence_length,
+                    stride=stride,
+                )
+            else:
+                dataset = MultimodalDataset(
+                    args.manifest,
+                    transform=build_eval_transforms(image_size),
+                    audio_transform=None,
+                    audio_config=audio_config,
+                )
     elif is_audio:
         dataset = AudioDataset(
             dataset_path=args.manifest,
@@ -113,10 +126,12 @@ def main():
     ).to(device)
 
     checkpoint_data = torch.load(args.checkpoint, map_location=device)
-    if "model_state_dict" in checkpoint_data:
-        model.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
-    else:
-        model.load_state_dict(checkpoint_data, strict=False)
+    state_dict = checkpoint_data.get("model_state_dict", checkpoint_data)
+    
+    if model_name == "fast_fusion" and list(state_dict.keys())[0].startswith("cross_attention"):
+        state_dict = {f"fusion_head.{k}": v for k, v in state_dict.items()}
+        
+    model.load_state_dict(state_dict, strict=False)
 
     results = evaluate_model(model, loader, device)
     frame_metrics = results.get("frame_metrics", {})

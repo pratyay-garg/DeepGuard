@@ -14,3 +14,10 @@
 * Added `AVSyncModel` implementing a dual-encoder architecture (temporal video backbone and audio backbone) that contrasts features using Cosine Similarity for AV synchronization prediction.
 * Added robust model factory routing to cleanly spin up AV Sync using existing backbones (TSM and AudioResNet18).
 * Integrated into `train.py` and `evaluate.py` via `is_temporal_multimodal` handling, allowing direct model training and sliding window analysis.
+
+### Phase 13: End-to-End Inference Orchestration
+* Built `scripts/infer.py` which takes a single raw `.mp4` video.
+* Dynamically extracts audio (via FFmpeg) and crops facial frames (via OpenCV and `FaceCropper`) directly into memory tensors.
+* Orchestrates three core models simultaneously (`TSM` for video, `AudioResNet18` for audio, `AVSync` for synchronization).
+* Prints an aggregated, user-friendly verdict showing global confidence per modality alongside the sliding-window temporal localization (e.g. `Suspicious interval: 00:06 –------ 00:10`).
+* Updated `README.md` to reflect true architecture mappings, datasets (Celeb-DF & DeepfakeTIMIT), and accurate phase completion statuses for world-class readiness.

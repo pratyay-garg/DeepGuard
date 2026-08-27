@@ -94,18 +94,23 @@ class AudioDataset(Dataset):
         audio_info = example["audio"]
         
         # Load audio from bytes (FLAC format) or path
-        if "bytes" in audio_info:
-            # Load from bytes using torchaudio
-            waveform, orig_sr = torchaudio.load(io.BytesIO(audio_info["bytes"]))
-        elif "path" in audio_info:
-            # Load from file path
-            waveform, orig_sr = torchaudio.load(audio_info["path"])
-        elif "array" in audio_info:
-            # Standard HF format with array and sampling_rate
-            waveform = torch.tensor(audio_info["array"], dtype=torch.float32)
-            orig_sr = audio_info["sampling_rate"]
-        else:
-            raise ValueError(f"Unknown audio format: {list(audio_info.keys())}")
+        try:
+            if "bytes" in audio_info:
+                # Load from bytes using torchaudio
+                waveform, orig_sr = torchaudio.load(io.BytesIO(audio_info["bytes"]))
+            elif "path" in audio_info:
+                # Load from file path
+                waveform, orig_sr = torchaudio.load(audio_info["path"])
+            elif "array" in audio_info:
+                # Standard HF format with array and sampling_rate
+                waveform = torch.tensor(audio_info["array"], dtype=torch.float32)
+                orig_sr = audio_info["sampling_rate"]
+            else:
+                raise ValueError(f"Unknown audio format: {list(audio_info.keys())}")
+        except Exception as e:
+            print(f"Warning: Failed to load audio at index {index}: {e}")
+            orig_sr = self.sample_rate
+            waveform = torch.zeros(1, int(self.sample_rate * 4.0))
         
         # Ensure waveform is mono and correct shape [1, num_samples]
         if waveform.ndim == 1:
@@ -150,6 +155,7 @@ class AudioDataset(Dataset):
         metadata = {
             "index": index,
             "original_sampling_rate": orig_sr,
+            "sample_id": audio_info.get("path", f"audio_{index}"),
             "waveform_length": waveform.shape[1],
         }
         # Add any additional fields from the example

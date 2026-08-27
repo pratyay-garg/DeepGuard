@@ -126,6 +126,14 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
             video_checkpoint=config.get("video_checkpoint"),
             audio_checkpoint=config.get("audio_checkpoint"),
         )
+        
+    if model_name == "fast_fusion":
+        from .fusion.full_fast_fusion import FullFastFusion
+        return FullFastFusion(
+            embed_dim=config.get("embed_dim", 512),
+            num_heads=config.get("num_heads", 4),
+            num_classes=num_classes
+        )
     if model_name == "cross_attention_fusion":
         fusion_config = config.get("fusion", {})
         return create_cross_attention_fusion(

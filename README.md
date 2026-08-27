@@ -37,30 +37,27 @@ DeepGuard provides:      VIDEO     83%
                      |                  |
             10 FPS Sampling        16 kHz Resample
                      |                  |
-         Lightweight Face Detection   Log-Mel Spectrogram
-              (SCRFD, 224x224)             |
-                     |                Lightweight CNN
-              ResNet18 (frame            |
-               embeddings)          Audio Score
-                     |                   |
-          Temporal Model (TSM) 
-                     |                   |
-              Video Score
+               Face Cropping      Log-Mel Spectrogram
+                     |                  |
+              ResNet18 (frame       AudioResNet18
+               embeddings)              |
+                     |                  |
+          Temporal Model (TSM)          |
+                     |                  |
+              Video Score          Audio Score
                      \                 /
-                        GATED FUSION
+                       \             /
+                    MULTIMODAL FUSION
+                 (Concat / Gated / AV Sync)
                             |
-               (Cross-Attention — optional,
-               triggered only if it improves
-               accuracy enough to justify cost)
-                            |
-                Audio-Visual Consistency
+                   (Cross-Attention)
                             |
                     REAL / MANIPULATED
                   Confidence + Timestamped
                  Manipulation Windows (~3.2s)
 ```
 
-**Design principle:** audio and video are scored independently first (cheap, fast), and only meet at a gated fusion layer. The more expensive cross-attention fusion is a later, optional stage — not a hard dependency — which keeps the pipeline usable on modest compute.
+**Design principle:** Audio and video are processed into temporal embeddings independently. They meet at various fusion layers (Concat, Gated, Cross-Attention) and an AV-Sync contrastive module, which maintains flexibility and robust deepfake detection capabilities.
 
 ---
 
@@ -68,11 +65,12 @@ DeepGuard provides:      VIDEO     83%
 
 | Stage | What it does |
 |---|---|
-| **Spatial** | Extract face regions with SCRFD, sample at 10 FPS to cut redundant computation, learn facial textures with ResNet18 |
-| **Temporal** | Temporal Shift Module (TSM) analyzes short frame sequences — similar temporal awareness to an LSTM, far less overhead |
-| **Audio** | 16 kHz audio → log-mel spectrogram → lightweight CNN to catch synthetic speech / voice-cloning artifacts |
-| **Fusion** | Independent video + audio scores merged via gated fusion; cross-attention fusion triggered only when justified |
-| **Localization** | 3.2-second windows → timestamped manipulation probability, not just a single verdict |
+| **Spatial** | Extract face regions, sample at 10 FPS to cut redundant computation, learn facial textures with ResNet18. |
+| **Temporal** | Temporal Shift Module (TSM) analyzes short frame sequences (overlapping 3.2s windows). |
+| **Audio** | 16 kHz audio → log-mel spectrogram → AudioResNet18 to catch synthetic speech artifacts. |
+| **Fusion** | Independent video + audio scores merged via flexible multimodal fusion pipelines. |
+| **AV Sync** | Contrastive AV Sync module calculates Cosine Similarity between Audio/Video embeddings. |
+| **Localization** | Sliding 3.2-second windows → timestamped manipulation probability (localize the deepfake). |
 
 ---
 
@@ -82,7 +80,7 @@ DeepGuard provides:      VIDEO     83%
 - **Vision:** OpenCV, TorchVision
 - **Audio:** Librosa / TorchAudio
 - **ML utilities:** Scikit-learn
-- **Face detection:** SCRFD (lightweight)
+- **Data:** Celeb-DF-v2, DeepfakeTIMIT (Preprocessed manifests)
 
 ---
 
@@ -90,30 +88,26 @@ DeepGuard provides:      VIDEO     83%
 
 | Phase | Status |
 |---|---|
-| 1 | ✅ Complete — Single-frame ResNet18 baseline |
-| 2 | ✅ Complete — Temporal modeling (TSM & Temporal CNN) |
-| 3 | ⏳ Planned — Audio baseline |
-| 4 | ⏳ Planned — Multimodal fusion (Video + Audio) |
-| 5 | ⏳ Planned — Cross-attention fusion |
-| 6 | ⏳ Planned — Localization with 3.2s windows |
+| 1-2 | ✅ Complete — Single-frame ResNet18 & Temporal modeling (TSM) |
+| 3 | ✅ Complete — Audio Baseline (AudioResNet18 & Mel-Spectrograms) |
+| 4-10 | ✅ Complete — Multimodal Fusion (Concat, Gated, Cross-Attention) |
+| 11 | ✅ Complete — Audio-Video Synchronization (Contrastive Learning) |
+| 12 | ✅ Complete — Temporal Localization (Sliding Windows ~3.2s) |
 
 ### Current Features
 
-- **Single-frame ResNet18** — Baseline for deepfake detection
-- **Temporal ResNet18-TSM** — Zero-FLOP temporal shift operations
-- **Temporal ResNet18+CNN** — Flexible temporal processing with Conv1D
-- **MultiFrameDataset** — Efficient sequence handling from manifests
-- **Flexible Configuration** — Choose between single-frame and temporal training
-- **Video-level Evaluation** — Frame and video metrics aggregation
+- **End-to-End Orchestration (`infer.py`)** — Unified inference on raw `.mp4` files.
+- **Multimodal Evaluation** — Analyzes Video, Audio, and AV Sync simultaneously.
+- **Temporal Localization** — Outputs exact suspicious time intervals in the media.
+- **Advanced Fusion Architectures** — Concat, Gated, Cross-Attention, and AV Sync.
 
 ---
 
 ## Datasets
 
-- [FaceForensics++](https://github.com/ondyari/FaceForensics) — visual manipulation baseline
-- [DFDC](https://ai.meta.com/datasets/dfdc/) — generalization / cross-dataset evaluation
-- [ASVspoof 2021](https://www.asvspoof.org/index2021.html) — audio spoofing benchmark
-- [AV-Deepfake1M](https://openreview.net/forum?id=YZ68Ifi4yH) — audio-visual detection & temporal localization
+- [Celeb-DF-v2](https://github.com/yuezunli/celeb-deepfakeforensics) — Visual manipulation baseline (used processed subset)
+- [DeepfakeTIMIT](https://www.idiap.ch/dataset/deepfaketimit) — Audio-visual detection & multimodal analysis
+
 
 ## Feasibility & Known Challenges
 

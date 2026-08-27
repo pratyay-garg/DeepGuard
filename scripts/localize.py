@@ -31,7 +31,7 @@ def main():
 
     device = get_device()
     model_name = config["model"].get("name", "resnet18")
-    is_fusion = model_name in ("concat_fusion", "gated_fusion", "cross_attention_fusion")
+    is_fusion = "fusion" in model_name or "sync" in model_name
     
     image_size = config["data"].get("image_size", 224)
     audio_config = config.get("data", {}).get("audio", {})
