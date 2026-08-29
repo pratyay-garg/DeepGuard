@@ -51,7 +51,7 @@ def main():
     is_audio_model = model_name == "audio_resnet18"
     
     # Check for multimodal model mode
-    is_multimodal_model = model_name in ["concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync"]
+    is_multimodal_model = model_name in ["concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync", "fast_fusion"]
 
     # Check for temporal mode
     use_temporal = args.use_multi_frame or config["model"].get("temporal", {}).get("enabled", False)
@@ -89,15 +89,22 @@ def main():
 
     elif is_multimodal_model:
         # Check if the model is temporal (AV Sync needs sequences)
-        is_temporal_multimodal = model_name == "av_sync"
+        is_temporal_multimodal = model_name in ["av_sync", "fast_fusion", "concat_fusion"]
         
         if is_temporal_multimodal:
-            print("Training with temporal multimodal model")
-            from src.datasets.av_sync_dataset import AVSyncDataset
-            dataset_cls = AVSyncDataset
+            print(f"Training with temporal multimodal model: {model_name}")
+            if model_name == "av_sync":
+                from src.datasets.av_sync_dataset import AVSyncDataset
+                dataset_cls = AVSyncDataset
+            else:
+                dataset_cls = MultimodalSequenceDataset
+                
             image_size = config["data"].get("image_size", 224)
-            sequence_length = config["data"].get("sequence_length", 32)
-            stride = config["data"].get("stride", 32)
+            sequence_length = config["data"].get("sequence_length", 16)
+            if "temporal" in config.get("model", {}):
+                sequence_length = config["model"]["temporal"].get("sequence_length", sequence_length)
+                
+            stride = sequence_length
             
             audio_config = config.get("data", {}).get("audio", {})
             
@@ -187,10 +194,53 @@ def main():
 
         print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
 
+    # Compute class weights for WeightedRandomSampler to prevent Mode Collapse
+    print("Computing class weights for balanced sampling...")
+    import collections
+    from torch.utils.data import WeightedRandomSampler
+    
+    # Try to extract labels efficiently based on dataset type
+    train_labels = []
+    if hasattr(train_dataset, "dataset") and hasattr(train_dataset.dataset, "column_names") and "label" in train_dataset.dataset.column_names:
+        # HuggingFace dataset (AudioDataset)
+        train_labels = train_dataset.dataset["label"]
+    elif hasattr(train_dataset, "samples") and len(train_dataset.samples) > 0:
+        # PreparedDataset / MultiFrameDataset
+        if isinstance(train_dataset.samples[0], dict):
+            train_labels = [int(s["label"]) for s in train_dataset.samples]
+        else:
+            train_labels = [int(s.label) for s in train_dataset.samples]
+    else:
+        # Fallback (slow)
+        print("Warning: Slow label extraction fallback")
+        for i in range(len(train_dataset)):
+            _, label, _ = train_dataset[i]
+            train_labels.append(label)
+            if i > 1000 and len(set(train_labels)) == 1:
+                break # Avoid full iteration if it takes too long
+                
+    label_counts = collections.Counter(train_labels)
+    print(f"Class distribution in training: {dict(label_counts)}")
+    
+    # Only use sampler if we found both classes
+    sampler = None
+    if not is_audio_model and len(label_counts) > 1 and sum(label_counts.values()) == len(train_dataset):
+        class_weights = {k: 1.0 / v for k, v in label_counts.items()}
+        sample_weights = [class_weights[l] for l in train_labels]
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
+        print("WeightedRandomSampler activated.")
+    else:
+        print("Warning: Could not create balanced sampler. Classes might be extremely imbalanced or missing.")
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["training"]["batch_size"],
-        shuffle=True,
+        shuffle=(sampler is None),
+        sampler=sampler,
         num_workers=0,
         pin_memory=False,
     )

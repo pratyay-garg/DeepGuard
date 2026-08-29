@@ -39,7 +39,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
         exp_name = exp_dir.name
         model_name = config.get("model", {}).get("name", "Unknown")
         
-        # Determine Fusion Type and Backbones
         if "fusion" in model_name or "sync" in model_name:
             if "concat" in model_name: fusion_type = "Concat"
             elif "gated" in model_name: fusion_type = "Gated"
@@ -51,7 +50,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
             video_ckpt = config.get("model", {}).get("video_checkpoint", "N/A") if "sync" in model_name else config.get("model", {}).get("fusion", {}).get("video_checkpoint", "N/A")
             audio_ckpt = config.get("model", {}).get("audio_checkpoint", "N/A") if "sync" in model_name else config.get("model", {}).get("fusion", {}).get("audio_checkpoint", "N/A")
             
-            # Clean up paths to just basenames for cleaner table
             vid_bb = Path(video_ckpt).name if video_ckpt != "N/A" else "N/A"
             aud_bb = Path(audio_ckpt).name if audio_ckpt != "N/A" else "N/A"
         else:
@@ -65,7 +63,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
         precision = metrics.get("precision", 0.0)
         recall = metrics.get("recall", 0.0)
         
-        # Keep numeric for plotting
         results.append({
             "exp_name": exp_name,
             "fusion_type": fusion_type,
@@ -78,15 +75,12 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
             "auc": auc if not math.isnan(auc) else 0.0
         })
 
-    # Sort results to put non-fusion models first, then fusion
     results.sort(key=lambda x: (x["fusion_type"] != "None", x["exp_name"]))
 
-    # Generate Markdown Table
     md_lines = []
     md_lines.append("# DeepGuard Evaluation Report")
     md_lines.append("")
     
-    # Embed the visual report image in the markdown
     img_filename = f"{output_filename}.png"
     md_lines.append(f"![Evaluation Metrics]({img_filename})")
     md_lines.append("")
@@ -110,7 +104,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
     print(report_content)
     print(f"\nMarkdown report saved to {md_output}")
 
-    # Generate Bar Chart with matplotlib
     try:
         import matplotlib.pyplot as plt
         import pandas as pd
@@ -118,7 +111,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
         
         df = pd.DataFrame(results)
         
-        # Set up the plot
         plt.figure(figsize=(12, 6))
         
         x = np.arange(len(df))
@@ -136,7 +128,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
         plt.legend()
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         
-        # Add value labels on top of bars
         for i, row in df.iterrows():
             plt.text(i - width, row['accuracy'] + 0.02, f"{row['accuracy']:.2f}", ha='center', va='bottom', fontsize=8)
             plt.text(i, row['f1'] + 0.02, f"{row['f1']:.2f}", ha='center', va='bottom', fontsize=8)
@@ -149,7 +140,6 @@ def generate_report(checkpoints_dir="checkpoints", output_dir="experiments", out
         
     except ImportError:
         print("\nNote: matplotlib or pandas not found. Visual plot was not generated.")
-        print("To generate visual plots, run: uv pip install matplotlib pandas")
 
 if __name__ == "__main__":
     generate_report()

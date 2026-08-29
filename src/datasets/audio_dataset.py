@@ -66,6 +66,22 @@ class AudioDataset(Dataset):
         
         self.dataset = load_from_disk(str(self.dataset_path))
         
+        # Undersample to min(real, fake)
+        labels = self.dataset["label"]
+        from collections import Counter
+        import random
+        counts = Counter(labels)
+        if len(counts) > 1:
+            min_count = min(counts.values())
+            real_indices = [i for i, l in enumerate(labels) if l == 0]
+            fake_indices = [i for i, l in enumerate(labels) if l == 1]
+            random.seed(42)
+            random.shuffle(real_indices)
+            random.shuffle(fake_indices)
+            keep_indices = real_indices[:min_count] + fake_indices[:min_count]
+            keep_indices.sort()
+            self.dataset = self.dataset.select(keep_indices)
+        
         # Verify dataset has required fields
         if "audio" not in self.dataset.column_names:
             raise ValueError(
