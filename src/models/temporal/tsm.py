@@ -113,7 +113,7 @@ class ResNet18TSM(nn.Module):
             )
         return nn.Sequential(*blocks)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_sequence: bool = False) -> torch.Tensor:
         """Args:
 
             x: Video tensor of shape [B, T, C, H, W]
@@ -130,6 +130,10 @@ class ResNet18TSM(nn.Module):
 
         # Reshape back to sequence [B, T, 512]
         features = features.view(b, t, -1)
+
+        if return_sequence:
+            # Bypass the temporal pooling and classifier, returning the unbroken sequence
+            return features
 
         # Global temporal pooling across video frame sequence
         video_features = features.mean(dim=1)  # Shape: [B, 512]

@@ -12,7 +12,7 @@ from src.utils.checkpoint import save_checkpoint
 
 
 class Trainer:
-    def __init__(self, model, optimizer, criterion, device, train_loader, val_loader, config):
+    def __init__(self, model, optimizer, criterion, device, train_loader, val_loader, config, start_epoch=0, best_metric=-float("inf")):
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
@@ -20,9 +20,10 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.config = config
-        self.epoch = 0
-        self.best_val_metric = -float("inf")
-        self.best_model_state = None
+        self.epoch = start_epoch
+        self.start_epoch = start_epoch
+        self.best_val_metric = best_metric
+        self.best_model_state = copy.deepcopy(self.model.state_dict()) if best_metric > -float("inf") else None
         self.accumulation_steps = config.get("training", {}).get("accumulation_steps", 1)
 
     def train_epoch(self):
@@ -149,11 +150,11 @@ class Trainer:
         val_loss = running_loss / len(self.val_loader.dataset)
         return {"loss": val_loss, **metrics}
 
-    def fit(self, max_epochs=None):
+    def fit(self, max_epochs=None, checkpoint_path=None):
         epochs = int(self.config.get("training", {}).get("epochs", 10)) if max_epochs is None else int(max_epochs)
         best_val_metrics = {}
 
-        for epoch in range(1, epochs + 1):
+        for epoch in range(self.start_epoch + 1, epochs + 1):
             self.epoch = epoch
             train_metrics = self.train_epoch()
             val_metrics = self.validate()
@@ -165,6 +166,14 @@ class Trainer:
                 self.best_val_metric = metric_to_track
                 self.best_model_state = copy.deepcopy(self.model.state_dict())
                 best_val_metrics = val_metrics
+                
+            # Save a checkpoint for this specific epoch
+            if checkpoint_path is not None:
+                p = Path(checkpoint_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                epoch_path = p.parent / f"{p.stem}_epoch_{epoch}{p.suffix}"
+                self.save_checkpoint(epoch_path, epoch=epoch, best_metric=metric_to_track, metrics=val_metrics)
+                print(f"Saved epoch {epoch} checkpoint to {epoch_path}")
 
         if self.best_model_state is not None:
             self.model.load_state_dict(self.best_model_state)

@@ -9,19 +9,31 @@ class FullFastFusion(nn.Module):
     Wrapper that combines the frozen feature extractors with the FastCrossAttentionFusion
     head, allowing it to be used in end-to-end inference scripts that expect raw images/audio.
     """
-    def __init__(self, embed_dim=512, num_heads=4, num_classes=2):
+    def __init__(self, embed_dim=512, num_heads=4, num_classes=2, video_checkpoint=None, audio_checkpoint=None, freeze_backbones=True, sequence_length=16):
         super().__init__()
+        import os
+        from ..temporal.tsm import ResNet18TSM
         
-        # Frozen Video Backbone (ResNet18)
-        self.video_backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.video_backbone.fc = nn.Identity()
+        # Video Backbone
+        # We use TSM to enhance features before sequential cross-attention
+        v_det = ResNet18TSM(pretrained=True, num_classes=2, n_segment=sequence_length)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            v_det.load_state_dict(state.get("model_state_dict", state), strict=False)
+        self.video_backbone = v_det
+        self.video_backbone.classifier = nn.Identity()
+        
         for param in self.video_backbone.parameters():
-            param.requires_grad = False
+            param.requires_grad = not freeze_backbones
             
-        # Frozen Audio Backbone (AudioResNet18)
+        # Audio Backbone
         self.audio_backbone = AudioResNet18(pretrained=True, num_classes=2)
+        if audio_checkpoint and os.path.exists(audio_checkpoint):
+            state = torch.load(audio_checkpoint, map_location="cpu")
+            self.audio_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+            
         for param in self.audio_backbone.parameters():
-            param.requires_grad = False
+            param.requires_grad = not freeze_backbones
             
         # Fast Fusion Head
         self.fusion_head = FastCrossAttentionFusion(embed_dim, num_heads, num_classes)
@@ -30,12 +42,9 @@ class FullFastFusion(nn.Module):
         # v_input: [B, T, C, H, W]
         # a_input: [B, 1, F, T_a]
         
-        B, T, C, H, W = v_input.shape
-        
-        # Extract Video Features
-        v_flat = v_input.view(B * T, C, H, W)
-        v_emb_flat = self.video_backbone(v_flat) # [B*T, 512]
-        v_emb = v_emb_flat.view(B, T, 512)
+        # Extract Video Features using TSM
+        # We pass return_sequence=True so TSM returns [B, T, 512] instead of pooling
+        v_emb = self.video_backbone(v_input, return_sequence=True)
         
         # Extract Audio Features
         a_emb = self.audio_backbone.extract_embedding(a_input) # [B, 512]

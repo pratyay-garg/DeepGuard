@@ -39,6 +39,11 @@ def create_av_sync_model(
     if audio_checkpoint and os.path.exists(audio_checkpoint):
         state = torch.load(audio_checkpoint, map_location="cpu")
         audio_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+
+    for param in video_backbone.parameters():
+        param.requires_grad = not freeze_backbones
+    for param in audio_backbone.parameters():
+        param.requires_grad = not freeze_backbones
     audio_backbone.backbone.fc = nn.Identity()
     
     return AVSyncModel(
@@ -90,6 +95,7 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
     # Fusion model modes
     if model_name == "concat_fusion":
         fusion_config = config.get("fusion", {})
+        is_temp = config.get("temporal", {}).get("enabled", False)
         return create_concat_fusion(
             video_embedding_dim=fusion_config.get("video_embedding_dim", 512),
             audio_embedding_dim=fusion_config.get("audio_embedding_dim", 512),
@@ -100,10 +106,14 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
             projection_dim=fusion_config.get("projection_dim", 256),
             video_checkpoint=fusion_config.get("video_checkpoint"),
             audio_checkpoint=fusion_config.get("audio_checkpoint"),
+            is_temporal=is_temp,
+            sequence_length=config.get("temporal", {}).get("sequence_length", 16),
+            freeze_backbones=fusion_config.get("freeze_backbones", True),
         )
     
     if model_name == "gated_fusion":
         fusion_config = config.get("fusion", {})
+        is_temp = config.get("temporal", {}).get("enabled", False)
         return create_gated_fusion(
             video_embedding_dim=fusion_config.get("video_embedding_dim", 512),
             audio_embedding_dim=fusion_config.get("audio_embedding_dim", 512),
@@ -114,6 +124,9 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
             projection_dim=fusion_config.get("projection_dim", 256),
             video_checkpoint=fusion_config.get("video_checkpoint"),
             audio_checkpoint=fusion_config.get("audio_checkpoint"),
+            is_temporal=is_temp,
+            sequence_length=config.get("temporal", {}).get("sequence_length", 16),
+            freeze_backbones=fusion_config.get("freeze_backbones", True),
         )
         
     if model_name == "av_sync":
@@ -129,13 +142,19 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
         
     if model_name == "fast_fusion":
         from .fusion.full_fast_fusion import FullFastFusion
+        fusion_config = config.get("fusion", {})
         return FullFastFusion(
             embed_dim=config.get("embed_dim", 512),
             num_heads=config.get("num_heads", 4),
-            num_classes=num_classes
+            num_classes=num_classes,
+            video_checkpoint=fusion_config.get("video_checkpoint"),
+            audio_checkpoint=fusion_config.get("audio_checkpoint"),
+            freeze_backbones=fusion_config.get("freeze_backbones", True),
+            sequence_length=config.get("temporal", {}).get("sequence_length", 16)
         )
     if model_name == "cross_attention_fusion":
         fusion_config = config.get("fusion", {})
+        is_temp = config.get("temporal", {}).get("enabled", False)
         return create_cross_attention_fusion(
             video_embedding_dim=fusion_config.get("video_embedding_dim", 512),
             audio_embedding_dim=fusion_config.get("audio_embedding_dim", 512),
@@ -145,6 +164,9 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
             dropout=fusion_config.get("dropout", 0.5),
             video_checkpoint=fusion_config.get("video_checkpoint"),
             audio_checkpoint=fusion_config.get("audio_checkpoint"),
+            is_temporal=is_temp,
+            sequence_length=config.get("temporal", {}).get("sequence_length", 16),
+            freeze_backbones=fusion_config.get("freeze_backbones", True),
         )
 
     # Single-frame mode (ResNet18 only)
@@ -346,21 +368,37 @@ def create_concat_fusion(
     projection_dim: int = 256,
     video_checkpoint: Optional[str] = None,
     audio_checkpoint: Optional[str] = None,
-) -> nn.Module:
+    is_temporal: bool = False,
+    sequence_length: int = 16,
+    freeze_backbones: bool = True) -> nn.Module:
     import os
     from .resnet18 import ResNet18Detector
+    from .temporal.tsm import ResNet18TSM
     from .audio.audio_resnet18 import AudioResNet18
     
-    video_backbone = ResNet18Detector(pretrained=True)
-    if video_checkpoint and os.path.exists(video_checkpoint):
-        state = torch.load(video_checkpoint, map_location="cpu")
-        video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
-    video_backbone.backbone.fc = nn.Identity()
+    if is_temporal:
+        video_backbone = ResNet18TSM(pretrained=True, num_classes=2, n_segment=sequence_length)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        # We need it to output embeddings, not logits
+        video_backbone.classifier = nn.Identity()
+    else:
+        video_backbone = ResNet18Detector(pretrained=True)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        video_backbone.backbone.fc = nn.Identity()
 
     audio_backbone = AudioResNet18(embedding_dim=audio_embedding_dim, pretrained=False, num_classes=2)
     if audio_checkpoint and os.path.exists(audio_checkpoint):
         state = torch.load(audio_checkpoint, map_location="cpu")
         audio_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+
+    for param in video_backbone.parameters():
+        param.requires_grad = not freeze_backbones
+    for param in audio_backbone.parameters():
+        param.requires_grad = not freeze_backbones
 
     if use_projection:
         return ConcatFusionWithProjection(
@@ -395,21 +433,36 @@ def create_gated_fusion(
     projection_dim: int = 256,
     video_checkpoint: Optional[str] = None,
     audio_checkpoint: Optional[str] = None,
-) -> nn.Module:
+    is_temporal: bool = False,
+    sequence_length: int = 16,
+    freeze_backbones: bool = True) -> nn.Module:
     import os
     from .resnet18 import ResNet18Detector
+    from .temporal.tsm import ResNet18TSM
     from .audio.audio_resnet18 import AudioResNet18
     
-    video_backbone = ResNet18Detector(pretrained=True)
-    if video_checkpoint and os.path.exists(video_checkpoint):
-        state = torch.load(video_checkpoint, map_location="cpu")
-        video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
-    video_backbone.backbone.fc = nn.Identity()
+    if is_temporal:
+        video_backbone = ResNet18TSM(pretrained=True, num_classes=2, n_segment=sequence_length)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        video_backbone.classifier = nn.Identity()
+    else:
+        video_backbone = ResNet18Detector(pretrained=True)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        video_backbone.backbone.fc = nn.Identity()
 
     audio_backbone = AudioResNet18(embedding_dim=audio_embedding_dim, pretrained=False, num_classes=2)
     if audio_checkpoint and os.path.exists(audio_checkpoint):
         state = torch.load(audio_checkpoint, map_location="cpu")
         audio_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+
+    for param in video_backbone.parameters():
+        param.requires_grad = not freeze_backbones
+    for param in audio_backbone.parameters():
+        param.requires_grad = not freeze_backbones
 
     if use_projection:
         return GatedFusionWithProjection(
@@ -442,22 +495,37 @@ def create_cross_attention_fusion(
     dropout: float = 0.5,
     video_checkpoint: Optional[str] = None,
     audio_checkpoint: Optional[str] = None,
-) -> nn.Module:
+    is_temporal: bool = False,
+    sequence_length: int = 16,
+    freeze_backbones: bool = True) -> nn.Module:
     import os
     from .resnet18 import ResNet18Detector
+    from .temporal.tsm import ResNet18TSM
     from .audio.audio_resnet18 import AudioResNet18
     from .fusion.cross_attention import CrossAttentionFusion
     
-    video_backbone = ResNet18Detector(pretrained=True)
-    if video_checkpoint and os.path.exists(video_checkpoint):
-        state = torch.load(video_checkpoint, map_location="cpu")
-        video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
-    video_backbone.backbone.fc = nn.Identity()
+    if is_temporal:
+        video_backbone = ResNet18TSM(pretrained=True, num_classes=2, n_segment=sequence_length)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        video_backbone.classifier = nn.Identity()
+    else:
+        video_backbone = ResNet18Detector(pretrained=True)
+        if video_checkpoint and os.path.exists(video_checkpoint):
+            state = torch.load(video_checkpoint, map_location="cpu")
+            video_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+        video_backbone.backbone.fc = nn.Identity()
 
     audio_backbone = AudioResNet18(embedding_dim=audio_embedding_dim, pretrained=False, num_classes=2)
     if audio_checkpoint and os.path.exists(audio_checkpoint):
         state = torch.load(audio_checkpoint, map_location="cpu")
         audio_backbone.load_state_dict(state.get("model_state_dict", state), strict=False)
+
+    for param in video_backbone.parameters():
+        param.requires_grad = not freeze_backbones
+    for param in audio_backbone.parameters():
+        param.requires_grad = not freeze_backbones
 
     return CrossAttentionFusion(
         video_backbone=video_backbone,

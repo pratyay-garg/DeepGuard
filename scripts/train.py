@@ -31,6 +31,9 @@ def parse_args():
         "--checkpoint", type=str, default="checkpoints/baseline.pt", help="Where to save checkpoints."
     )
     parser.add_argument(
+        "--resume", type=str, default=None, help="Path to checkpoint to resume from."
+    )
+    parser.add_argument(
         "--use-multi-frame",
         action="store_true",
         help="Use MultiFrameDataset for temporal sequences. "
@@ -269,6 +272,23 @@ def main():
     )
     criterion = nn.CrossEntropyLoss()
 
+    start_epoch = 0
+    best_metric = -float("inf")
+    
+    if args.resume:
+        import os
+        if os.path.exists(args.resume):
+            print(f"Resuming training from checkpoint: {args.resume}")
+            checkpoint = torch.load(args.resume, map_location=device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            if 'optimizer_state_dict' in checkpoint:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint.get('epoch', 0)
+            best_metric = checkpoint.get('best_metric', -float("inf"))
+            print(f"Resumed at epoch {start_epoch} with best metric {best_metric:.4f}")
+        else:
+            print(f"Warning: Resume checkpoint {args.resume} not found. Starting from scratch.")
+
     # Gradient accumulation for effective larger batch size
     config["training"]["accumulation_steps"] = 4  # Simulates batch_size=8 with actual batch_size=2
 
@@ -280,12 +300,14 @@ def main():
         train_loader=train_loader,
         val_loader=val_loader,
         config=config,
+        start_epoch=start_epoch,
+        best_metric=best_metric,
     )
 
     checkpoint_path = Path(args.checkpoint)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fit_results = trainer.fit()
+    fit_results = trainer.fit(checkpoint_path=args.checkpoint)
     
     # Save the model configuration inside the checkpoint folder for MLOps tracking
     import shutil

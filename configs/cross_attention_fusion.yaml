@@ -5,18 +5,23 @@ model:
   name: "cross_attention_fusion"
   num_classes: 2
   pretrained: true
+  temporal:
+    enabled: true
+    sequence_length: 16
+    stride: 16
   video_backbone:
-    name: "resnet18"
+    name: "tsm"
     pretrained: true
   audio_backbone:
     name: "audio_resnet18"
     pretrained: false
   fusion:
+    freeze_backbones: true
     projection_dim: 256
     hidden_dim: 512
     dropout: 0.5
     num_heads: 8
-    video_checkpoint: "checkpoints/single_frame/single_frame.pt"
+    video_checkpoint: "checkpoints/tsm/tsm.pt"
     audio_checkpoint: "checkpoints/audio_resnet18/audio_resnet18.pt"
 
 data:
@@ -35,7 +40,7 @@ training:
   batch_size: 2 # 8
   learning_rate: 0.0001
   weight_decay: 0.0001
-  epochs: 1 #15
+  epochs: 5 #15
   accumulation_steps: 16 # 4
   early_stopping_patience: 5
   scheduler:

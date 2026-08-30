@@ -49,13 +49,20 @@ class CrossAttentionFusion(nn.Module):
     def forward(self, video, audio):
         # Extract features
         video_features = self.video_backbone(video)
-        
+        try:
+            audio_features = self.audio_backbone(audio, return_logits=False)
+        except TypeError:
+            audio_features = self.audio_backbone(audio)
+        if isinstance(audio_features, tuple):
+            audio_features = audio_features[0]
+            
         # Ensure features are flat [B, dim]
-            video_features = nn.functional.adaptive_avg_pool2d(video_features, 1)
+        if video_features.dim() > 2:
+            video_features = nn.functional.adaptive_avg_pool2d(video_features, (1, 1))
             video_features = torch.flatten(video_features, 1)
             
-        if b is not None and t is not None:
-            video_features = video_features.view(b, t, -1).mean(dim=1)
+        if audio_features.dim() > 2:
+            audio_features = nn.functional.adaptive_avg_pool2d(audio_features, (1, 1))
             audio_features = torch.flatten(audio_features, 1)
 
         # Project features to the attention dimension
