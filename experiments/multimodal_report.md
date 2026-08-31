@@ -9,4 +9,4 @@
 | av_sync_1 | AVSync | tsm.pt | audio_resnet18.pt | 0.3333 | 0.3333 | 1.0000 | 0.5000 | 0.0000 / NaN |
 | concat_tsm | Concat | single_frame.pt | audio_resnet18.pt | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0000 / NaN |
 | cross_attention_single | CrossAttention | single_frame.pt | audio_resnet18.pt | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0000 / NaN |
-| fast_fusion | FastFusion | tsm.pt | audio_resnet18.pt | 0.4608 | 0.4591 | 1.0000 | 0.6293 | 0.7745 |
+| fast_fusion | FastFusion | tsm.pt | audio_resnet18.pt | 0.6113 | 0.5618 | 0.6849 | 0.6173 | 0.7000 |
