@@ -95,7 +95,7 @@ def main():
                 faces = detector.detect(frame)
                 if faces:
                     best_face = max(faces, key=lambda f: f.confidence)
-                    cropped = cropper.crop(frame, best_face)
+                    cropped = cropper.crop(frame, best_face.bbox)
                     
                     vid_out_dir = output_dir / split / vpath.stem
                     vid_out_dir.mkdir(parents=True, exist_ok=True)
