@@ -12,10 +12,11 @@ from src.utils.checkpoint import save_checkpoint
 
 
 class Trainer:
-    def __init__(self, model, optimizer, criterion, device, train_loader, val_loader, config, start_epoch=0, best_metric=-float("inf")):
+    def __init__(self, model, optimizer, criterion, device, train_loader, val_loader, config, start_epoch=0, best_metric=-float("inf"), scheduler=None):
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
+        self.scheduler = scheduler
         self.device = device
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -25,82 +26,69 @@ class Trainer:
         self.best_val_metric = best_metric
         self.best_model_state = copy.deepcopy(self.model.state_dict()) if best_metric > -float("inf") else None
         self.accumulation_steps = config.get("training", {}).get("accumulation_steps", 1)
+        self.scaler = torch.amp.GradScaler("cuda") if torch.cuda.is_available() else None
 
     def train_epoch(self):
         self.model.train()
-
         running_loss = 0.0
         all_targets = []
         all_probabilities = []
         all_predictions = []
 
-        for i, batch in enumerate(tqdm(self.train_loader, desc="Training", leave=False)):
-            # Handle different dataset types
-            if len(batch) == 4:  # Multimodal: image, audio, label, metadata
+        pbar = tqdm(self.train_loader, desc="Training", leave=False)
+        for i, batch in enumerate(pbar):
+            if len(batch) == 4:
                 images, audio, labels, _ = batch
-                images = images.to(self.device)
-                audio = audio.to(self.device)
-                labels = labels.to(self.device)
+                images, audio, labels = images.to(self.device), audio.to(self.device), labels.to(self.device)
                 
-                self.optimizer.zero_grad()
-                # For multimodal models, extract embeddings then pass to fusion head
-                if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
-                    with torch.no_grad():
-                        # Extract video embedding
-                        video_embedding = self.model.video_backbone(images)
-                        # Extract audio embedding
-                        audio_embedding = self.model.audio_backbone(audio)
-                    logits = self.model.fusion_head(video_embedding, audio_embedding)
-                else:
-                    logits = self.model(images, audio)
-                loss = self.criterion(logits, labels)
-                loss.backward()
-                
-                # Gradient accumulation
-                if (i + 1) % self.accumulation_steps == 0:
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-                
-                running_loss += loss.item() * images.size(0)
-                
-                probabilities = torch.softmax(logits, dim=1)[:, 1]
-                preds = (probabilities >= 0.5).to(torch.int64)
-                
-                all_targets.append(labels.detach().cpu().numpy())
-                all_probabilities.append(probabilities.detach().cpu().numpy())
-                all_predictions.append(preds.detach().cpu().numpy())
-                
-            elif len(batch) == 3:  # Standard: image, label, metadata
+                with torch.amp.autocast('cuda', enabled=self.scaler is not None):
+                    if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
+                        with torch.no_grad():
+                            video_embedding = self.model.video_backbone(images)
+                            audio_embedding = self.model.audio_backbone(audio)
+                        logits = self.model.fusion_head(video_embedding, audio_embedding)
+                    else:
+                        logits = self.model(images, audio)
+                    
+                    loss = self.criterion(logits, labels) / self.accumulation_steps
+
+            elif len(batch) == 3:
                 images, labels, _ = batch
-                images = images.to(self.device)
-                labels = labels.to(self.device)
+                images, labels = images.to(self.device), labels.to(self.device)
                 
-                self.optimizer.zero_grad()
-                logits = self.model(images)
-                loss = self.criterion(logits, labels)
-                loss.backward()
-                
-                # Gradient accumulation
-                if (i + 1) % self.accumulation_steps == 0:
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-                
-                running_loss += loss.item() * images.size(0)
-                
-                probabilities = torch.softmax(logits, dim=1)[:, 1]
-                preds = (probabilities >= 0.5).to(torch.int64)
-                
-                all_targets.append(labels.detach().cpu().numpy())
-                all_probabilities.append(probabilities.detach().cpu().numpy())
-                all_predictions.append(preds.detach().cpu().numpy())
+                with torch.amp.autocast('cuda', enabled=self.scaler is not None):
+                    logits = self.model(images)
+                    loss = self.criterion(logits, labels) / self.accumulation_steps
             else:
                 raise ValueError(f"Unexpected batch size: {len(batch)}")
-                
-            # Periodically free memory to prevent Colab RAM crashes
+
+            # Backward pass
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
+                if (i + 1) % self.accumulation_steps == 0:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+            else:
+                loss.backward()
+                if (i + 1) % self.accumulation_steps == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+
+            running_loss += (loss.item() * self.accumulation_steps) * images.size(0)
+            
+            probabilities = torch.softmax(logits, dim=1)[:, 1]
+            preds = (probabilities >= 0.5).to(torch.int64)
+            
+            all_targets.append(labels.detach().cpu().numpy())
+            all_probabilities.append(probabilities.detach().cpu().numpy())
+            all_predictions.append(preds.detach().cpu().numpy())
+            
             if i % 100 == 0:
                 import gc
                 gc.collect()
 
+        pbar.close()
         targets = self._concatenate(all_targets)
         probabilities = self._concatenate(all_probabilities)
         predictions = self._concatenate(all_predictions)
@@ -118,26 +106,28 @@ class Trainer:
         all_predictions = []
 
         with torch.no_grad():
-            for batch in tqdm(self.val_loader, desc="Validation", leave=False):
-                if len(batch) == 4:
-                    images, audio, labels, _ = batch
-                    images = images.to(self.device)
-                    audio = audio.to(self.device)
-                    labels = labels.to(self.device)
-                    
-                    if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
-                        video_embedding = self.model.video_model(images)
-                        audio_embedding = self.model.audio_model(audio)
-                        logits = self.model.fusion_head(video_embedding, audio_embedding)
+            pbar = tqdm(self.val_loader, desc="Validation", leave=False)
+            for batch in pbar:
+                with torch.amp.autocast('cuda', enabled=self.scaler is not None):
+                    if len(batch) == 4:
+                        images, audio, labels, _ = batch
+                        images = images.to(self.device)
+                        audio = audio.to(self.device)
+                        labels = labels.to(self.device)
+                        
+                        if hasattr(self.model, 'is_fusion_model') and self.model.is_fusion_model:
+                            video_embedding = self.model.video_model(images)
+                            audio_embedding = self.model.audio_model(audio)
+                            logits = self.model.fusion_head(video_embedding, audio_embedding)
+                        else:
+                            logits = self.model(images, audio)
                     else:
-                        logits = self.model(images, audio)
-                else:
-                    images, labels, _ = batch
-                    images = images.to(self.device)
-                    labels = labels.to(self.device)
-                    logits = self.model(images)
+                        images, labels, _ = batch
+                        images = images.to(self.device)
+                        labels = labels.to(self.device)
+                        logits = self.model(images)
 
-                loss = self.criterion(logits, labels)
+                    loss = self.criterion(logits, labels)
                 running_loss += loss.item() * images.size(0)
 
                 probabilities = torch.softmax(logits, dim=1)[:, 1]
@@ -154,6 +144,7 @@ class Trainer:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
+        pbar.close()
         targets = self._concatenate(all_targets)
         probabilities = self._concatenate(all_probabilities)
         predictions = self._concatenate(all_predictions)

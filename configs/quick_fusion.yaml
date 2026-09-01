@@ -1,5 +1,5 @@
 model:
-  name: "fast_fusion"
+  name: "quick_fusion"
   num_classes: 2
   pretrained: true
   embed_dim: 512
@@ -9,20 +9,21 @@ model:
     sequence_length: 8
     stride: 32
   video_backbone:
-    name: "tsm"
+    name: "efficientnet"
     pretrained: true
   audio_backbone:
-    name: "audio_resnet18"
+    name: "wav2vec2"
     pretrained: true
   fusion:
     projection_dim: 256
-    freeze_backbones: false
+    freeze_backbones: true
     video_checkpoint: "checkpoints/tsm/tsm.pt"
     audio_checkpoint: "checkpoints/audio_resnet18/audio_resnet18.pt"
 
 data:
   image_size: 224
   audio:
+    return_raw_audio: true
     sample_rate: 16000
     n_fft: 400
     hop_length: 160
@@ -33,11 +34,12 @@ data:
     duration: 4.0
 
 training:
-  batch_size: 4 # AMP + 8-frame optimized
-  learning_rate: 0.0001
+  batch_size: 2 # AMP + 8-frame optimized
+  learning_rate: 0.00005 # Slower learning rate for advanced architectures
   weight_decay: 0.0001
   epochs: 25
-  accumulation_steps: 8 # Effective batch size 32
+  freeze_backbones: true # Set to false after stage 1
+  accumulation_steps: 16 # Effective batch size 32
   early_stopping_patience: 5
   scheduler:
     type: "cosine"

@@ -3,6 +3,11 @@ from __future__ import annotations
 import numpy as np
 import torch
 import torchaudio
+
+try:
+    torchaudio.set_audio_backend('soundfile')
+except Exception:
+    pass
 from pathlib import Path
 from typing import Union, Tuple, Optional
 

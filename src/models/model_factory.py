@@ -140,6 +140,18 @@ def create_model(config: dict, num_classes: int = 2) -> nn.Module:
             audio_checkpoint=config.get("audio_checkpoint"),
         )
         
+    if model_name == "quick_fusion":
+        from .fusion.quick_fusion import QuickFusion
+        fusion_config = config.get("fusion", {})
+        return QuickFusion(
+            embed_dim=config.get("embed_dim", 512),
+            num_heads=config.get("num_heads", 8),
+            num_classes=num_classes,
+            video_pretrained=config.get("video_backbone", {}).get("pretrained", True),
+            audio_pretrained=config.get("audio_backbone", {}).get("pretrained", True),
+            freeze_backbones=fusion_config.get("freeze_backbones", False)
+        )
+
     if model_name == "fast_fusion":
         from .fusion.full_fast_fusion import FullFastFusion
         fusion_config = config.get("fusion", {})

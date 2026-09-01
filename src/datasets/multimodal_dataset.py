@@ -226,7 +226,10 @@ class MultimodalDataset(torch.utils.data.Dataset):
 
         # Load and process audio
         waveform = self._load_audio(sample.audio_path)
-        mel_spec = self._compute_mel_spectrogram(waveform)
+        if self.audio_config.get("return_raw_audio", False):
+            mel_spec = waveform.squeeze(0) if waveform.shape[0] == 1 else waveform
+        else:
+            mel_spec = self._compute_mel_spectrogram(waveform)
 
         # Apply audio transform if provided
         if self.audio_transform is not None:
@@ -486,7 +489,10 @@ class MultimodalSequenceDataset(torch.utils.data.Dataset):
 
         # Load and process audio
         waveform = self._load_audio(sample.audio_path)
-        mel_spec = self._compute_mel_spectrogram(waveform)
+        if self.audio_config.get("return_raw_audio", False):
+            mel_spec = waveform.squeeze(0) if waveform.shape[0] == 1 else waveform
+        else:
+            mel_spec = self._compute_mel_spectrogram(waveform)
 
         # Apply audio transform if provided
         if self.audio_transform is not None:

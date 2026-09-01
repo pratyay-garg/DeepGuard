@@ -114,12 +114,15 @@ def main():
         dataset, 
         batch_size=config["training"].get("batch_size", 8), 
         shuffle=False,
-        num_workers=4,
+        num_workers=0,
         pin_memory=True,
     )
 
     # Create model using factory
-    config["model"]["sequence_length"] = config.get("data", {}).get("sequence_length", 16)
+    if "temporal" in config.get("model", {}):
+        config["model"]["sequence_length"] = config["model"]["temporal"].get("sequence_length", 16)
+    else:
+        config["model"]["sequence_length"] = config.get("data", {}).get("sequence_length", 16)
     model = create_model(
         config["model"],
         num_classes=config["model"].get("num_classes", 2),

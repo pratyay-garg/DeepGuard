@@ -54,7 +54,7 @@ def main():
     is_audio_model = model_name == "audio_resnet18"
     
     # Check for multimodal model mode
-    is_multimodal_model = model_name in ["concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync", "fast_fusion"]
+    is_multimodal_model = model_name in ["concat_fusion", "gated_fusion", "cross_attention_fusion", "av_sync", "fast_fusion", "quick_fusion"]
 
     # Check for temporal mode
     use_temporal = args.use_multi_frame or config["model"].get("temporal", {}).get("enabled", False)
@@ -92,7 +92,7 @@ def main():
 
     elif is_multimodal_model:
         # Check if the model is temporal (AV Sync needs sequences)
-        is_temporal_multimodal = model_name in ["av_sync", "fast_fusion", "concat_fusion"]
+        is_temporal_multimodal = model_name in ["av_sync", "fast_fusion", "concat_fusion", "quick_fusion"]
         
         if is_temporal_multimodal:
             print(f"Training with temporal multimodal model: {model_name}")
@@ -106,8 +106,9 @@ def main():
             sequence_length = config["data"].get("sequence_length", 16)
             if "temporal" in config.get("model", {}):
                 sequence_length = config["model"]["temporal"].get("sequence_length", sequence_length)
-                
-            stride = sequence_length
+                stride = config["model"]["temporal"].get("stride", sequence_length)
+            else:
+                stride = sequence_length
             
             audio_config = config.get("data", {}).get("audio", {})
             
@@ -256,7 +257,10 @@ def main():
     )
 
     # Create model using factory
-    config["model"]["sequence_length"] = config.get("data", {}).get("sequence_length", 16)
+    if "temporal" in config.get("model", {}):
+        config["model"]["sequence_length"] = config["model"]["temporal"].get("sequence_length", 16)
+    else:
+        config["model"]["sequence_length"] = config.get("data", {}).get("sequence_length", 16)
     model = create_model(
         config["model"],
         num_classes=config["model"].get("num_classes", 2),
@@ -270,6 +274,7 @@ def main():
         lr=float(config["training"]["learning_rate"]),
         weight_decay=float(config["training"]["weight_decay"]),
     )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
     criterion = nn.CrossEntropyLoss()
 
     start_epoch = 0
@@ -289,9 +294,7 @@ def main():
         else:
             print(f"Warning: Resume checkpoint {args.resume} not found. Starting from scratch.")
 
-    # Gradient accumulation for effective larger batch size
-    config["training"]["accumulation_steps"] = 4  # Simulates batch_size=8 with actual batch_size=2
-
+    # Pass proper config to trainer
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
@@ -302,6 +305,7 @@ def main():
         config=config,
         start_epoch=start_epoch,
         best_metric=best_metric,
+        scheduler=scheduler,
     )
 
     checkpoint_path = Path(args.checkpoint)
