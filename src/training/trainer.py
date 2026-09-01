@@ -95,6 +95,11 @@ class Trainer:
                 all_predictions.append(preds.detach().cpu().numpy())
             else:
                 raise ValueError(f"Unexpected batch size: {len(batch)}")
+                
+            # Periodically free memory to prevent Colab RAM crashes
+            if i % 100 == 0:
+                import gc
+                gc.collect()
 
         targets = self._concatenate(all_targets)
         probabilities = self._concatenate(all_probabilities)
@@ -141,6 +146,13 @@ class Trainer:
                 all_targets.append(labels.detach().cpu().numpy())
                 all_probabilities.append(probabilities.detach().cpu().numpy())
                 all_predictions.append(preds.detach().cpu().numpy())
+                
+                # Periodically free memory to prevent Colab RAM crashes
+                if len(all_targets) % 50 == 0:
+                    import gc
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
         targets = self._concatenate(all_targets)
         probabilities = self._concatenate(all_probabilities)

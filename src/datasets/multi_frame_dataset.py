@@ -177,7 +177,8 @@ class MultiFrameDataset(torch.utils.data.Dataset):
         frames = []
         for image_path in sample.image_paths:
             path = self._resolve_image_path(image_path)
-            image = Image.open(path).convert("RGB")
+            with Image.open(path) as img:
+                image = img.convert("RGB")
             if self.transform is not None:
                 image = self.transform(image)
             frames.append(image)

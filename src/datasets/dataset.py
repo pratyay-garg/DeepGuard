@@ -131,7 +131,8 @@ class PreparedDataset(torch.utils.data.Dataset):
         sample = self.samples[index]
         image_path = self._resolve_image_path(sample.image_path)
 
-        image = Image.open(image_path).convert("RGB")
+        with Image.open(image_path) as img:
+            image = img.convert("RGB")
 
         if self.transform is not None:
             image = self.transform(image)

@@ -218,7 +218,8 @@ class MultimodalDataset(torch.utils.data.Dataset):
 
         # Load image
         image_path = self._resolve_path(sample.image_path)
-        image = Image.open(image_path).convert("RGB")
+        with Image.open(image_path) as img:
+            image = img.convert("RGB")
 
         if self.transform is not None:
             image = self.transform(image)
@@ -474,7 +475,8 @@ class MultimodalSequenceDataset(torch.utils.data.Dataset):
         frames = []
         for image_path in sample.image_paths:
             path = self._resolve_path(image_path)
-            image = Image.open(path).convert("RGB")
+            with Image.open(path) as img:
+                image = img.convert("RGB")
             if self.transform is not None:
                 image = self.transform(image)
             frames.append(image)
